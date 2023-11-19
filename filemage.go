@@ -24,6 +24,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,12 +35,29 @@ type magic_t struct {
 	filemode string // "binary" or "text"
 	filetype string // "ex: MPEG4"
 	content  string // "executable", "metadata", "rawdata", "consumable", "packedmulti", "image"
-	//magic []uint8   // "magic prefix"
-	magic string
+	magic    string // "file magic, convertable to []byte"
 }
 
 func main() {
 
+	buf := make([]byte, 100)                                             // We only need the first 100 bytes to do both "ascii or binary", or
+	respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc
+	readErrChk(err)
+	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++\n")
+	//dlfile.Body.Read(buf)
+	//fmt.Printf("%s\n",string(buf))
+	//lrBuf := &io.LimitedReader(R: repData.Body.Read(buf), N: 100)
+	lrBuf := &io.LimitedReader{R: respData.Body, N: 100} // bring in only the 1st 100 bytes of the file (respData.Body)
+	buf, err = io.ReadAll(lrBuf)
+	readErrChk(err)
+	//fmt.Println(string(buf))
+	fmt.Printf("%x", buf)
+	//io.Copy(os.Stdout, respData.Body)
+	fileType := evalHeader(buf)
+	fmt.Printf("\nFiletype detected: %s\tMagic: % x\n", fileType.filetype, fileType.magic)
+}
+
+func evalHeader(h []byte) magic_t {
 	var magictable = []magic_t{
 		{filemode: "text", filetype: "XML", content: "metadata", magic: "\x00\x00\x00\x3C\x00\x00\x00\x3F\x00\x00\x00\x78\x00\x00\x00\x6D\x00\x00\x00\x6C\x00\x00\x00\x20"},
 		{filemode: "bin", filetype: "Video mpeg .mpg", content: "consumable", magic: "\x00\x00\x01\xBA"},
@@ -100,21 +118,15 @@ func main() {
 		{filemode: "text", filetype: "Little endian UTF-16 encoded text", content: "executable", magic: "\xFF\xFE"},
 		{filemode: "bin", filetype: "JPEG image .jpg", content: "consumable", magic: "\xFF\xD8\xFF\xE0"},
 	}
-
-	buf := make([]byte, 100)                                             // We only need the first 100 bytes to do both "ascii or binary", or
-	respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc
-	readErrChk(err)
-	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++\n")
-	//dlfile.Body.Read(buf)
-	//fmt.Printf("%s\n",string(buf))
-
-	//lrBuf := &io.LimitedReader(R: repData.Body.Read(buf), N: 100)
-	lrBuf := &io.LimitedReader{R: respData.Body, N: 100}
-	buf, err = io.ReadAll(lrBuf)
-	readErrChk(err)
-	//fmt.Println(string(buf))
-	fmt.Printf("%x", buf)
-	//io.Copy(os.Stdout, respData.Body)
+	unkn := magic_t{filemode: "", filetype: "unknown", content: "unknown", magic: ""}
+	for _, magicType := range magictable {
+		// chop length of header slice to the current file magic compare to enable a bytes.Equal check
+		if bytes.Equal(h[:len(magicType.magic)], []byte(magicType.magic)) {
+			return magicType
+		}
+	}
+	// no file magic hits? return "unknown"
+	return unkn
 }
 
 func readErrChk(e error) {
