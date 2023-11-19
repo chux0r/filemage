@@ -39,16 +39,17 @@ type magic_t struct {
 }
 
 func main() {
-
-	buf := make([]byte, 100)                                             // We only need the first 100 bytes to do both "ascii or binary", or
-	respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc
+	// Ultimately want to be a function that takes a URL string input and returns the 4 fields of the magic_t struct
+	buf := make([]byte, 100)                                             // We only need the first 100 bytes to do type and magic validation checks
+	respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc JPG, test ok
+	//respData, err := http.Get("https://filesamples.com/samples/video/mpg/sample_1280x720_surfing_with_audio.mpg") //MPG, test ok
+	//respData, err := http.Get("http://chux0r.org/images/banner-main4.png") //PNG, test ok
 	readErrChk(err)
 	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++\n")
-	//dlfile.Body.Read(buf)
-	//fmt.Printf("%s\n",string(buf))
-	//lrBuf := &io.LimitedReader(R: repData.Body.Read(buf), N: 100)
-	lrBuf := &io.LimitedReader{R: respData.Body, N: 100} // bring in only the 1st 100 bytes of the file (respData.Body)
-	buf, err = io.ReadAll(lrBuf)
+	// NOTE: according to the http.Get docs, the response body is streamed on demand as the Body field is read. So,
+	// if we limit the read, we avoid overhead of downloading large files
+	lrReader := &io.LimitedReader{R: respData.Body, N: 100} // create a Reader that reads only the 1st 100 bytes of the file
+	buf, err = io.ReadAll(lrReader)                         // use the LimitedReader to fill our little buffer w the 1st 100 bytes
 	readErrChk(err)
 	//fmt.Println(string(buf))
 	fmt.Printf("%x", buf)
