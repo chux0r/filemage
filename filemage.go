@@ -29,6 +29,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"unicode/utf8"
 )
 
 type magic_t struct {
@@ -40,10 +42,11 @@ type magic_t struct {
 
 func main() {
 	// Ultimately want to be a function that takes a URL string input and returns the 4 fields of the magic_t struct
-	buf := make([]byte, 100)                                             // We only need the first 100 bytes to do type and magic validation checks
-	respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc JPG, test ok
+	buf := make([]byte, 100) // We only need the first 100 bytes to do type and magic validation checks
+	//respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc JPG, test ok
 	//respData, err := http.Get("https://filesamples.com/samples/video/mpg/sample_1280x720_surfing_with_audio.mpg") //MPG, test ok
 	//respData, err := http.Get("http://chux0r.org/images/banner-main4.png") //PNG, test ok
+	respData, err := http.Get("https://slashdot.org")
 	readErrChk(err)
 	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++\n")
 	// NOTE: according to the http.Get docs, the response body is streamed on demand as the Body field is read. So,
@@ -56,6 +59,24 @@ func main() {
 	//io.Copy(os.Stdout, respData.Body)
 	fileType := evalHeader(buf)
 	fmt.Printf("\nFiletype detected: %s\tMagic: % x\n", fileType.filetype, fileType.magic)
+
+}
+
+func isThisUtf8(h []byte) (bool, int, string) {
+	// use utf8.ValidRune on each header element to eval. Count the number of valid utf8 to determine. If YES, send the string back
+	count := 0
+	var b = strings.Builder{}
+	for _, c := range string(h) {
+		if utf8.ValidRune(c) {
+			count++
+			b.WriteRune(c)
+		}
+	}
+	if len(b.String()) > 40 {
+		return true, b.Len(), b.String()
+	} else {
+		return false, b.Len(), b.String()
+	}
 }
 
 func evalHeader(h []byte) magic_t {
@@ -119,15 +140,20 @@ func evalHeader(h []byte) magic_t {
 		{filemode: "text", filetype: "Little endian UTF-16 encoded text", content: "executable", magic: "\xFF\xFE"},
 		{filemode: "bin", filetype: "JPEG image .jpg", content: "consumable", magic: "\xFF\xD8\xFF\xE0"},
 	}
-	unkn := magic_t{filemode: "", filetype: "unknown", content: "unknown", magic: ""}
 	for _, magicType := range magictable {
 		// chop length of header slice to the current file magic compare to enable a bytes.Equal check
 		if bytes.Equal(h[:len(magicType.magic)], []byte(magicType.magic)) {
 			return magicType
 		}
 	}
-	// no file magic hits? return "unknown"
-	return unkn
+	// no file magic hits? do a UTF-8 scan on the header, display what's discovered, and return "unknown"
+	textY, n, tx := isThisUtf8(h)
+	fmt.Printf("\nFile has %d%% UTF-8 text content.\nText: %s\n", n, tx)
+	if textY {
+		return magic_t{filemode: "text", filetype: "unknown", content: "unknown", magic: ""}
+	} else {
+		return magic_t{filemode: "bin", filetype: "unknown", content: "unknown", magic: ""}
+	}
 }
 
 func readErrChk(e error) {
