@@ -37,12 +37,9 @@ type magic_t struct {
 	magic    string // "file magic, convertable to []byte"
 }
 
+// Input an HTTP link to some file, determine filetype from its binary header
 func HttpFileHeadMagicCheck(htsource string) string {
-	// Ultimately want to be a function that takes a URL string input and returns the 4 fields of the magic_t struct
 	buf := make([]byte, 100) // We only need the first 100 bytes to do type and magic validation checks
-	//respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc JPG, test ok
-	//respData, err := http.Get("https://filesamples.com/samples/video/mpg/sample_1280x720_surfing_with_audio.mpg") //MPG, test ok
-	//respData, err := http.Get("http://chux0r.org/images/banner-main4.png") //PNG, test ok
 	respData, err := http.Get(htsource)
 	readErrChk(err)
 	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++")
@@ -51,7 +48,6 @@ func HttpFileHeadMagicCheck(htsource string) string {
 	lrReader := &io.LimitedReader{R: respData.Body, N: 100} // create a Reader that reads only the 1st 100 bytes of the file
 	buf, err = io.ReadAll(lrReader)                         // use the LimitedReader to fill our little buffer w the 1st 100 bytes
 	readErrChk(err)
-	//fmt.Println(string(buf))
 	fmt.Printf("%x", buf)
 	fileType := FileMagicEval(buf)
 	fmt.Printf("\nFiletype detected: %s\tMagic: % x\n", fileType.filetype, fileType.magic)
