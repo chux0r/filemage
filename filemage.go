@@ -1,27 +1,24 @@
+package filemage
+
 /******************************************************************************
 * filemage.go
 *
-* Go program tickles an input file's file magic to determine in a real way what
+* FileMagicEval: Tickles an input file header's file magic to determine what
 * the filetype _really_ is, regardless of context or extension.
 *
-* INPUT:        Any file reference on the internet (NOT "the file")
+* IsThisUtf8: Input a byte slice and get back the answer, the byte len of the
+*             utf-8 encoded stuff, and the utf-8 text as a string
 *
-* PROCESSING:   Stream file. Sample first N bytes to get file magic and
-*               sample for file encoding analysis
-*				Eval BIN or TEXT
-*               [BIN] Compare to known magic
-*				[TXT] Analyze text sample to determine type
-*
-* OUTPUT:		Return Mode[BIN/TXT]; int type if known (0 for unkn); Eval
-*               results [EXE|COM|INFO|UNKN]; Sample head if unkn
-*
-* EXCEPTIONS	oversize files.
+* HttpFileHeadMagicCheck: Input a URL and get back the filetype, if it can be
+*                         determined ("" returned if it cannot.)
+*                         NOTE: File read limits to 1st 100 bytes
 *
 * AUTHOR: Chuck Geigner a.k.a. "mongoose", a.k.a. "chux0r"
 * DATE:   13NOV2023
 *
+* Copyright © 2023 CT Geigner, All rights reserved
+* Free to use under GNU GPL v2, see https://github/chux0r/filemage/LICENSE.md
 ******************************************************************************/
-package main
 
 import (
 	"bytes"
@@ -40,15 +37,15 @@ type magic_t struct {
 	magic    string // "file magic, convertable to []byte"
 }
 
-func main() {
+func HttpFileHeadMagicCheck(htsource string) string {
 	// Ultimately want to be a function that takes a URL string input and returns the 4 fields of the magic_t struct
 	buf := make([]byte, 100) // We only need the first 100 bytes to do type and magic validation checks
 	//respData, err := http.Get("http://chux0r.org/images/chux-n-nin.jpg") // grab a session, response, metadata, file data, etc JPG, test ok
 	//respData, err := http.Get("https://filesamples.com/samples/video/mpg/sample_1280x720_surfing_with_audio.mpg") //MPG, test ok
 	//respData, err := http.Get("http://chux0r.org/images/banner-main4.png") //PNG, test ok
-	respData, err := http.Get("https://slashdot.org")
+	respData, err := http.Get(htsource)
 	readErrChk(err)
-	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++\n")
+	fmt.Println("++ RESPONSE STRUCT RAW ++\n\n", respData, "\n\n++ FILE SERVED ++")
 	// NOTE: according to the http.Get docs, the response body is streamed on demand as the Body field is read. So,
 	// if we limit the read, we avoid overhead of downloading large files
 	lrReader := &io.LimitedReader{R: respData.Body, N: 100} // create a Reader that reads only the 1st 100 bytes of the file
@@ -56,13 +53,12 @@ func main() {
 	readErrChk(err)
 	//fmt.Println(string(buf))
 	fmt.Printf("%x", buf)
-	//io.Copy(os.Stdout, respData.Body)
-	fileType := evalHeader(buf)
+	fileType := FileMagicEval(buf)
 	fmt.Printf("\nFiletype detected: %s\tMagic: % x\n", fileType.filetype, fileType.magic)
-
+	return fileType.filetype
 }
 
-func isThisUtf8(h []byte) (bool, int, string) {
+func IsThisUtf8(h []byte) (bool, int, string) {
 	// use utf8.ValidRune on each header element to eval. Count the number of valid utf8 to determine. If YES, send the string back
 	count := 0
 	var b = strings.Builder{}
@@ -72,14 +68,15 @@ func isThisUtf8(h []byte) (bool, int, string) {
 			b.WriteRune(c)
 		}
 	}
-	if len(b.String()) > 40 {
+	if len(b.String()) > 40 { // Assumes input byte slice of len 100 - if over 40% UTF8, then TRUE :: totally arbitrary but needed to draw a line lol
 		return true, b.Len(), b.String()
 	} else {
 		return false, b.Len(), b.String()
 	}
 }
 
-func evalHeader(h []byte) magic_t {
+// func evalHeader(h []byte) magic_t {
+func FileMagicEval(h []byte) magic_t {
 	var magictable = []magic_t{
 		{filemode: "text", filetype: "XML", content: "metadata", magic: "\x00\x00\x00\x3C\x00\x00\x00\x3F\x00\x00\x00\x78\x00\x00\x00\x6D\x00\x00\x00\x6C\x00\x00\x00\x20"},
 		{filemode: "bin", filetype: "Video mpeg .mpg", content: "consumable", magic: "\x00\x00\x01\xBA"},
@@ -166,12 +163,12 @@ func evalHeader(h []byte) magic_t {
 		}
 	}
 	// no file magic hits? do a UTF-8 scan on the header, display what's discovered, and return "unknown"
-	textY, n, tx := isThisUtf8(h)
+	textY, n, tx := IsThisUtf8(h)
 	fmt.Printf("\nFile has %d%% UTF-8 text content.\nText: %s\n", n, tx)
 	if textY {
-		return magic_t{filemode: "text", filetype: "unknown", content: "unknown", magic: ""}
+		return magic_t{filemode: "text", filetype: "", content: "unknown", magic: ""}
 	} else {
-		return magic_t{filemode: "bin", filetype: "unknown", content: "unknown", magic: ""}
+		return magic_t{filemode: "bin", filetype: "", content: "unknown", magic: ""}
 	}
 }
 
